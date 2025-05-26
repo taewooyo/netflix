@@ -1,19 +1,32 @@
 import { useLocalSearchParams } from "expo-router";
-import { View, Text } from "react-native";
+import { View, Text, FlatList } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import mediaDetailedList from '@assets/data/mediaDetailedList.json';
 import MedaiInfo from "@/components/MediaDetails/MediaInfo";
 import MediaInfo from "@/components/MediaDetails/MediaInfo";
 import { useVideoPlayer, VideoView } from "expo-video";
 import MediaHeader from "@/components/MediaDetails/MedaiHeader";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SeasonSelector from "@/components/MediaDetails/SeasonSelector";
+import { Episode } from "@/types/types"
+import EpisodeListItem from "@/components/EpisodeListItem";
 
 export default function MediaDetails() {
     const { id } = useLocalSearchParams();
     const [selectedSeason, setSelectedSeason] = useState<string>("Season 1");
+    const [seasonEpisodes, setSeasonEpisodes] = useState<Episode[]>([]);
+    const [episodeLoadingId, setEpisodeLoadingId] = useState<string | null>(null);
+
     const videoViewRef = useRef<VideoView | null>(null)
     const mediaItem = mediaDetailedList.find((media) => media.id == id)
+
+    useEffect(() => {
+        if (!mediaItem || mediaItem.type !== 'TV_SERIES') return;
+
+        const season = mediaItem.seasons?.find((seasonItem) => seasonItem.seasonName === selectedSeason);
+
+        setSeasonEpisodes(season?.episodes || []);
+    }, [selectedSeason])
 
     if (!mediaItem) {
         return <Text style={{ color: 'white' }}>Media Item Was Not Found!</Text>
@@ -34,37 +47,55 @@ export default function MediaDetails() {
         player.showNowPlayingNotification = true;
     })
 
-    const onPlayMediaPressed = () => {
+    const onPlayMediaPressed = async (video?: string, episodeId?: string) => {
         trailierPlayer.pause();
+        if (video && episodeId) {
+            setEpisodeLoadingId(episodeId);
+            await mediaPlayer.replaceAsync(video);
+            setEpisodeLoadingId(null);
+        }
         videoViewRef.current?.enterFullscreen()
         mediaPlayer.play();
     };
 
     return (
-        <SafeAreaView>
+        <SafeAreaView style={{ flex: 1 }}>
             <MediaHeader
                 thumbnail={thumbnail}
                 trailierPlayer={trailierPlayer}
                 mediaPlayer={mediaPlayer}
                 videoViewRef={videoViewRef}
             />
-            <MediaInfo
-                title={title}
-                releaseYear={releaseYear}
-                ageRestriction={ageRestriction}
-                duration={duration}
-                description={description}
-                type={type}
-                nrOfSeasons={seasons?.length}
-                onPlayMediaPressed={onPlayMediaPressed}
+            <FlatList
+                data={seasonEpisodes}
+                renderItem={({ item }) =>
+                    <EpisodeListItem
+                        episode={item}
+                        onPlayMediaPressed={onPlayMediaPressed}
+                        isEpisodeLoading={episodeLoadingId === item.id}
+                    />}
+                ListHeaderComponent={
+                    <View style={{ padding: 10, gap: 5 }}>
+                        <MediaInfo
+                            title={title}
+                            releaseYear={releaseYear}
+                            ageRestriction={ageRestriction}
+                            duration={duration}
+                            description={description}
+                            type={type}
+                            nrOfSeasons={seasons?.length}
+                            onPlayMediaPressed={onPlayMediaPressed}
+                        />
+                        {(type === 'TV_SERIES' && !!seasons) && (
+                            <SeasonSelector
+                                seasons={seasons}
+                                selectedSeason={selectedSeason}
+                                setSelectedSeason={setSelectedSeason}
+                            />
+                        )}
+                    </View>
+                }
             />
-            {(type === 'TV_SERIES' && !!seasons) && (
-                <SeasonSelector
-                seasons={seasons}
-                selectedSeason={selectedSeason}
-                setSelectedSeason={setSelectedSeason}
-            />
-            )}
         </SafeAreaView>
     )
 };
